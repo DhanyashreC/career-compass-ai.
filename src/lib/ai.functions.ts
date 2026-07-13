@@ -95,17 +95,13 @@ export const evaluateInterviewAnswer = createServerFn({ method: "POST" })
 
 // ---------- RESUME REVIEW ----------
 const ResumeInput = z.object({
-  filename: z.string().min(1).max(200),
-  // base64 (no data: prefix)
-  base64: z.string().min(10),
-  mimeType: z.string().min(3).max(100),
+  resume: z.string().min(50),
 });
 
 export const reviewResume = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => ResumeInput.parse(d))
   .handler(async ({ data }) => {
-    const dataUrl = `data:${data.mimeType};base64,${data.base64}`;
     return callGatewayJson<{
       atsScore: number;
       missingSkills: string[];
@@ -114,25 +110,18 @@ export const reviewResume = createServerFn({ method: "POST" })
       betterProjects: string[];
       suggestions: string[];
       overallVerdict: string;
-    }>(
-      [
-        {
-          role: "system",
-          content:
-            "You are an expert career coach and ATS resume reviewer. Return STRICT JSON: {atsScore (0-100 number), missingSkills (string[]), grammarIssues (string[]), betterSummary (string, markdown), betterProjects (string[] rewritten bullets), suggestions (string[]), overallVerdict (string)}",
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Review this resume PDF in depth." },
-            { type: "file", file: { filename: data.filename, file_data: dataUrl } },
-          ],
-        },
-      ],
-      { model: "google/gemini-2.5-flash" },
-    );
+    }>([
+      {
+        role: "system",
+        content:
+          "You are an expert ATS resume reviewer. Analyze the resume text and return ONLY valid JSON with these fields: atsScore (0-100), missingSkills (string[]), grammarIssues (string[]), betterSummary (string), betterProjects (string[]), suggestions (string[]), overallVerdict (string).",
+      },
+      {
+        role: "user",
+        content: data.resume,
+      },
+    ]);
   });
-
 // ---------- COMPANY PREP ----------
 const CompanyInput = z.object({
   company: z.string().min(1).max(120),
@@ -162,7 +151,6 @@ export const companyPrep = createServerFn({ method: "POST" })
       },
     ]);
   });
-
 // ---------- DSA PRACTICE ----------
 const DsaInput = z.object({
   difficulty: z.enum(["Easy", "Medium", "Hard"]),

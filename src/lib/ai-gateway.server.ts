@@ -1,7 +1,8 @@
-// Server-only helper for calling the Lovable AI Gateway (OpenAI-compatible).
-// Never import this from client code.
+import { GoogleGenAI } from "@google/genai";
 
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY!,
+});
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -20,50 +21,37 @@ export interface CallOptions {
   responseJson?: boolean;
 }
 
-export async function callGateway(messages: ChatMessage[], opts: CallOptions = {}): Promise<string> {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) throw new Error("Missing LOVABLE_API_KEY");
+export async function callGateway(
+  messages: ChatMessage[],
+  opts: CallOptions = {}
+): Promise<string> {
+  const prompt = messages
+    .map((m) =>
+      typeof m.content === "string"
+        ? `${m.role.toUpperCase()}:\n${m.content}`
+        : `${m.role.toUpperCase()}: [Attached Content]`
+    )
+    .join("\n\n");
 
-  const body: Record<string, unknown> = {
-    model: opts.model ?? "google/gemini-2.5-flash",
-    messages,
-  };
-  if (opts.temperature !== undefined) body.temperature = opts.temperature;
-  if (opts.responseJson) body.response_format = { type: "json_object" };
-
-  const res = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify(body),
+  const response = await ai.models.generateContent({
+    model: opts.model ?? "gemini-2.5-flash",
+    contents: prompt,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    if (res.status === 429) throw new Error("AI rate limit exceeded. Please try again shortly.");
-    if (res.status === 402)
-      throw new Error("AI credits exhausted. Please add credits to your Lovable workspace.");
-    throw new Error(`AI Gateway error [${res.status}]: ${text}`);
-  }
-
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return data.choices?.[0]?.message?.content ?? "";
+  return response.text ?? "";
 }
 
-export async function callGatewayJson<T = unknown>(
+export async function callGatewayJson<T>(
   messages: ChatMessage[],
-  opts: CallOptions = {},
+  opts: CallOptions = {}
 ): Promise<T> {
-  const raw = await callGateway(messages, { ...opts, responseJson: true });
-  // Strip potential ```json fences
-  const cleaned = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```$/i, "")
+  const text = await callGateway(messages, opts);
+
+  const cleaned = text
+    .replace(/^```json/i, "")
+    .replace(/^```/i, "")
+    .replace(/```$/, "")
     .trim();
+
   return JSON.parse(cleaned) as T;
 }

@@ -21,43 +21,37 @@ interface Review {
   overallVerdict: string;
 }
 
-const fileToBase64 = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const s = String(r.result);
-      resolve(s.split(",")[1] ?? "");
-    };
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(file);
-  });
+
 
 function ResumeReview() {
   const review = useServerFn(reviewResume);
-  const [file, setFile] = useState<File | null>(null);
+  const [resume, setResume] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Review | null>(null);
 
-  const submit = async () => {
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Please upload a PDF under 5 MB.");
-      return;
-    }
-    setLoading(true);
-    setResult(null);
-    try {
-      const base64 = await fileToBase64(file);
-      const r = await review({
-        data: { filename: file.name, base64, mimeType: file.type || "application/pdf" },
-      });
-      setResult(r);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Review failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+ const submit = async () => {
+  if (!resume.trim()) {
+    toast.error("Please paste your resume.");
+    return;
+  }
+
+  setLoading(true);
+  setResult(null);
+
+  try {
+    const r = await review({
+      data: {
+        resume,
+      },
+    });
+
+    setResult(r);
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : "Review failed");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -74,21 +68,16 @@ function ResumeReview() {
       </header>
 
       <div className="glass-card p-6">
-        <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-border rounded-xl py-10 cursor-pointer hover:border-primary/50 transition-colors">
-          <Upload className="h-8 w-8 text-muted-foreground" />
-          <div className="text-sm text-muted-foreground">
-            {file ? file.name : "Click to upload a PDF (max 5 MB)"}
-          </div>
-          <input
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-        </label>
+        <textarea
+  value={resume}
+  onChange={(e) => setResume(e.target.value)}
+  placeholder="Paste your complete resume here..."
+  rows={18}
+  className="w-full rounded-lg border border-border bg-white/5 px-4 py-3 text-sm outline-none ring-focus resize-none"
+/>
         <button
           onClick={submit}
-          disabled={!file || loading}
+          disabled={!resume.trim() || loading}
           className="btn-gradient mt-4 w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
         >
           {loading ? "Analyzing your resume…" : "Review my resume"}
